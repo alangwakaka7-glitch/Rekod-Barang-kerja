@@ -1,0 +1,255 @@
+
+<!DOCTYPE html>
+<html lang="ms">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Rekod Barang Kerja</title>
+<style>
+body{font-family:Arial;margin:0;padding:16px;background:#f1f4f8;color:#222}
+main{max-width:1000px;margin:auto}
+h2{color:#173b65}
+.card{background:white;padding:16px;border-radius:12px;margin-bottom:15px}
+input,select,button{padding:11px;margin:5px 0;border:1px solid #ccc;border-radius:6px;box-sizing:border-box}
+input,select{width:100%}
+button{background:#175da8;color:white;border:0;cursor:pointer}
+button.delete{background:#c62828}
+button.edit{background:#e18a00}
+table{width:100%;border-collapse:collapse;background:white;font-size:13px}
+th,td{padding:9px;border:1px solid #ddd;text-align:left}
+th{background:#173b65;color:white}
+.tablewrap{overflow-x:auto}
+.small{font-size:12px;color:#666}
+</style>
+</head>
+<body>
+<main>
+<h2>REKOD BARANG KERJA</h2>
+
+<section class="card">
+<h3 id="formTitle">Tambah Rekod Barang</h3>
+<form id="recordForm">
+<label>Nombor IO</label>
+<input id="io" required>
+
+<label>Nombor PO</label>
+<input id="po" required>
+
+<label>Nama Barang</label>
+<input id="item" required>
+
+<label>Unit</label>
+<input id="unit" required>
+
+<label>Status Barang</label>
+<select id="status" required>
+<option value="">-- Pilih Status --</option>
+<option>DAH COLLECT</option>
+<option>BELUM COLLECT</option>
+<option>SUDAH SIAP</option>
+<option>BELUM SIAP</option>
+<option>BARANG REJECT DARI CLIENT</option>
+<option>BARANG SUDAH HANTAR</option>
+<option>BARANG BELUM/TAK SEMPAT HANTAR</option>
+</select>
+
+<label>Nama Pekerja</label>
+<input id="worker" required>
+
+<button type="submit" id="saveBtn">Simpan Rekod</button>
+<button type="button" id="cancelBtn" hidden>Batal Edit</button>
+</form>
+</section>
+
+<section class="card">
+<h3>Senarai Rekod</h3>
+<input id="search" placeholder="Cari IO, PO, barang atau pekerja...">
+<select id="filter">
+<option value="">Semua Status</option>
+<option>DAH COLLECT</option>
+<option>BELUM COLLECT</option>
+<option>SUDAH SIAP</option>
+<option>BELUM SIAP</option>
+<option>BARANG REJECT DARI CLIENT</option>
+<option>BARANG SUDAH HANTAR</option>
+<option>BARANG BELUM/TAK SEMPAT HANTAR</option>
+</select>
+<p class="small" id="count">Memuatkan rekod...</p>
+<button type="button" id="exportBtn">Export CSV</button>
+<div class="tablewrap">
+<table>
+<thead>
+<tr>
+<th>IO</th><th>PO</th><th>Barang</th><th>Unit</th>
+<th>Status</th><th>Pekerja</th><th>Tindakan</th>
+</tr>
+</thead>
+<tbody id="records"></tbody>
+</table>
+</div>
+</section>
+</main>
+
+<script type="module">
+import { initializeApp } from
+"https://www.gstatic.com/firebasejs/13.4.0/firebase-app.js";
+import {
+ getDatabase, ref, push, onValue, update, remove
+} from
+"https://www.gstatic.com/firebasejs/13.4.0/firebase-database.js";
+
+const firebaseConfig = {
+ apiKey: "AIzaSyBT74xfCEt9vW3jTOqLVHHtHTCd4oJKAmQ",
+ authDomain: "rekod-barang-kerja.firebaseapp.com",
+ databaseURL: "https://rekod-barang-kerja-default-rtdb.asia-southeast1.firebasedatabase.app",
+ projectId: "rekod-barang-kerja",
+ storageBucket: "rekod-barang-kerja.firebasestorage.app",
+ messagingSenderId: "18643371683",
+ appId: "1:18643371683:web:00994a8c63c5bbff8c2116",
+ measurementId: "G-CZQCW6H7SY"
+};
+
+const app = initializeApp(firebaseConfig);
+const db = getDatabase(app);
+const recordsRef = ref(db,"records");
+
+let records = [];
+let editingId = null;
+
+const form = document.getElementById("recordForm");
+const fields = ["io","po","item","unit","status","worker"];
+
+function getFormData(){
+ const data = {};
+ fields.forEach(id => {
+  data[id] = document.getElementById(id).value.trim();
+ });
+ return data;
+}
+
+function resetForm(){
+ form.reset();
+ editingId = null;
+ document.getElementById("formTitle").textContent = "Tambah Rekod Barang";
+ document.getElementById("saveBtn").textContent = "Simpan Rekod";
+ document.getElementById("cancelBtn").hidden = true;
+}
+
+form.addEventListener("submit", async e => {
+ e.preventDefault();
+ const data = getFormData();
+
+ try {
+  if(editingId){
+   await update(ref(db,"records/"+editingId),data);
+   alert("Rekod berjaya dikemaskini.");
+  }else{
+   await push(recordsRef,{
+    ...data,
+    createdAt:Date.now()
+   });
+   alert("Rekod berjaya disimpan.");
+  }
+  resetForm();
+ }catch(error){
+  alert("Gagal menyimpan. Semak sambungan dan tetapan Firebase.");
+  console.error(error);
+ }
+});
+
+document.getElementById("cancelBtn").onclick = resetForm;
+
+function makeCell(value){
+ const td = document.createElement("td");
+ td.textContent = value || "";
+ return td;
+}
+
+function render(){
+ const tbody = document.getElementById("records");
+ tbody.replaceChildren();
+
+ const q = document.getElementById("search").value.toLowerCase();
+ const filter = document.getElementById("filter").value;
+
+ const shown = records.filter(r => {
+  const text = fields.map(f => r[f] || "").join(" ").toLowerCase();
+  return text.includes(q) && (!filter || r.status === filter);
+ });
+
+ document.getElementById("count").textContent =
+  shown.length + " rekod dipaparkan";
+
+ shown.forEach(r => {
+  const tr = document.createElement("tr");
+  ["io","po","item","unit","status","worker"].forEach(f=>{
+   tr.appendChild(makeCell(r[f]));
+  });
+
+  const td = document.createElement("td");
+  const edit = document.createElement("button");
+  edit.textContent = "Edit";
+  edit.className = "edit";
+  edit.onclick = () => {
+   fields.forEach(f=>{
+    document.getElementById(f).value = r[f] || "";
+   });
+   editingId = r.id;
+   document.getElementById("formTitle").textContent = "Edit Rekod";
+   document.getElementById("saveBtn").textContent = "Kemaskini";
+   document.getElementById("cancelBtn").hidden = false;
+   window.scrollTo({top:0,behavior:"smooth"});
+  };
+
+  const del = document.createElement("button");
+  del.textContent = "Padam";
+  del.className = "delete";
+  del.onclick = async () => {
+   if(confirm("Betul mahu padam rekod ini?")){
+    try{
+     await remove(ref(db,"records/"+r.id));
+    }catch(error){
+     alert("Tidak berjaya memadam rekod.");
+    }
+   }
+  };
+
+  td.append(edit,del);
+  tr.appendChild(td);
+  tbody.appendChild(tr);
+ });
+}
+
+onValue(recordsRef, snapshot => {
+ const data = snapshot.val() || {};
+ records = Object.entries(data).map(([id,value])=>({
+  id,...value
+ }));
+ render();
+}, error => {
+ document.getElementById("count").textContent =
+  "Gagal membaca data Firebase. Semak Rules Database.";
+ console.error(error);
+});
+
+document.getElementById("search").addEventListener("input",render);
+document.getElementById("filter").addEventListener("change",render);
+
+document.getElementById("exportBtn").onclick = () => {
+ const header = ["IO","PO","Nama Barang","Unit","Status","Nama Pekerja"];
+ const rows = records.map(r=>fields.map(f=>r[f] || ""));
+ const csv = [header,...rows].map(row=>
+  row.map(v=>'"'+String(v).replace(/"/g,'""')+'"').join(",")
+ ).join("\n");
+
+ const blob = new Blob(["\uFEFF"+csv],{type:"text/csv;charset=utf-8"});
+ const url = URL.createObjectURL(blob);
+ const a = document.createElement("a");
+ a.href = url;
+ a.download = "rekod-barang.csv";
+ a.click();
+ URL.revokeObjectURL(url);
+};
+</script>
+</body>
+</html>
